@@ -1,0 +1,70 @@
+{
+  "name": "mooruk",
+  "version": "0.0.1",
+  "homepage": "https://github.com/IjzerenHein/mooruk.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/IjzerenHein/mooruk.js.git"
+  },
+  "main": "dist/mooruk.js",
+  "author": {
+    "name": "Hein Rutjes <hrutjes@gmail.com>"
+  },
+  "description": "New lightweight cassowary constraint solver build for speed",
+  "keywords": [
+    "cassowary",
+    "cassowaryjs",
+    "cassowary.js",
+    "autolayout.js",
+    "solver",
+    "constraint"
+  ],
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/IjzerenHein/mooruk.js/blob/master/LICENSE"
+    }
+  ],
+  "readmeFilename": "README.md",
+  "bugs": {
+    "url": "https://github.com/IjzerenHein/mooruk.js/issues"
+  },
+  "engines": {
+    "node": ">= 0.10.0"
+  },
+  "files": [
+    "src",
+    "dist",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "babel-core": "^5.6.15",
+    "babelify": "^6.1.2",
+    "benchmark": "^1.0.0",
+    "browserify": "^10.2.3",
+    "cassowary": "0.0.2",
+    "chai": "^3.0.0",
+    "grunt": "^0.4.5",
+    "grunt-banner": "^0.3.1",
+    "grunt-browserify": "^3.8.0",
+    "grunt-contrib-concat": "^0.5.1",
+    "grunt-contrib-uglify": "^0.9.1",
+    "grunt-eslint": "^14.0.0",
+    "grunt-exec": "^0.4.6",
+    "grunt-jscs": "^1.8.0",
+    "grunt-jsdoc-to-markdown": "^1.1.1",
+    "lodash": "^3.9.3",
+    "mocha": "^2.2.5",
+    "mocha-traceur": "^2.1.0",
+    "node-libs-browser": "^0.5.2",
+    "platform": "^1.3.0"
+  },
+  "browserify": {
+    "transform": [
+      "babelify"
+    ]
+  },
+  "scripts": {
+    "test": "mocha --compilers js:mocha-traceur"
+  }
+}
