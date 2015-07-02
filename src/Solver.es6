@@ -1,9 +1,30 @@
-import Errors from './Errors.es6';
+/**
+ * Mooruk is a lightweight and fast cassowary constraint solver based on the [Kiwi C++ implementation](https://github.com/nucleic/kiwi).
+ * A mooruk is a small(er) species of Cassowary noted for its agility in running and leaping.
+ * Mooruk is about 3x faster and 4x smaller compared to Cassowary.js. It is built for speed and low
+ * memory consumption. It contains no syntaxtical sugar whatsoever and intends to be as lean and mean
+ * as possible.
+ *
+ * ### Index
+ *
+ * |Entity|Type|Description|
+ * |---|---|---|
+ * |[Solver](#mooruksolver)|`class`|Constraint solver class.|
+ * |[SolverError](#mooruksolver)|`class`|Error object thrown by the Solver class.|
+ * |[Term](#moorukterm)|`class`|Term inside an expression.|
+ * |[Expression](#moorukexpression)|`class`|Expression class.|
+ * |[Operator](#moorukoperator--enum)|`enum`|Relational constraint operators.|
+ * |[Strength](#moorukstrength--object)|`namespace`|Default strengths + strength creation.|
+ *
+ * ### API Reference
+ *
+ * @module Mooruk
+ */
+
 import Row from './Row.es6';
 import {Term, Expression} from './Expression.es6';
 
 const Symbol = {
-    INVALID: 'I',
     SLACK: 'S',
     ERROR: 'R',
     DUMMY: 'D',
@@ -11,9 +32,18 @@ const Symbol = {
     CONSTRAINT: 'C'
 };
 
+/**
+ * @namespace
+ */
 const Operator = {
+
+    /** Less or equal */
     LEQ: 1,
+
+    /** Equal */
     EQU: 0,
+
+    /** Greater or equal */
     GEQ: -1
 };
 
@@ -21,11 +51,42 @@ function createStrength(a, b, c) {
     return c + (b * 1000) + (a * 1000000);
 }
 
+/**
+ * @namespace
+ */
 const Strength = {
+
+    /**
+     * Creates a strength from a strong, medium and weak component.
+     *
+     * ```strength = c + (b * 1000) + (a * 1000000)```
+     *
+     * @function
+     * @param {Number} a Strong component
+     * @param {Number} b Medium component
+     * @param {Number} c Weak component
+     * @return {Number} strength
+     */
     create: createStrength,
+
+    /**
+     * Required strength.
+     */
     REQUIRED: createStrength(1000, 1000, 1000),
+
+    /**
+     * Strong strength.
+     */
     STRONG: createStrength(1, 0, 0),
+
+    /**
+     * Medium strength.
+     */
     MEDIUM: createStrength(0, 1, 0),
+
+    /**
+     * Weak strength.
+     */
     WEAK: createStrength(0, 0, 1)
 };
 
@@ -76,7 +137,7 @@ class Solver {
             return this._createConstraint(expr1.add(expr2.multiply(-1)), operator, strength);
         }
         else {
-            throw new Errors.InternalSolverError('Not yet implemented');
+            throw new SolverError({name: 'InternalSolverError', message: 'Not yet implemented'});
         }
     }
 
@@ -88,27 +149,66 @@ class Solver {
      */
     addConstraint(constraint) {
         if (this._constraints[constraint.symbol]) {
-            throw new Errors.DuplicateConstraintError(constraint);
+            throw new SolverError({name: 'DuplicateConstraintError', message: 'The constraint has not been added to the solver.', constraint: constraint});
         }
 
+        //
+        // Create row
+        //
         const tag = {
-            constraint: constraint,
-            marker: Symbol.INVALID,
-            other: Symbol.INVALID
+            constraint: constraint
+            //,marker: undefined,
+            //other: undefined
         };
         const row = this._createRow(constraint, tag);
 
-        let subject = this._chooseSubject(row, tag);
-        if ((subject === Symbol.INVALID) && this._allDummies(row)){
-            if (!nearZero(row.constant)) {
-                throw new Errors.UnsatisfiableConstraintError(constraint);
+        //
+        // Choose subject
+        //
+        let subject;
+        for (let symbol in row.cells) {
+            if (symbol.charAt(0) === Symbol.EXTERNAL) {
+                subject = symbol;
+                break;
             }
-            subject = tag.marker;
+        }
+        if (!subject) {
+            if (((tag.marker.charAt(0) === Symbol.SLACK) || (tag.marker.charAt(0) === Symbol.ERROR)) && (row.coefficientFor(tag.marker) < 0)) {
+                subject = tag.marker;
+            }
+            else if (((tag.other.charAt(0) === Symbol.SLACK) || (tag.other.charAt(0) === Symbol.ERROR)) && (row.coefficientFor(tag.other) < 0)) {
+                subject = tag.other;
+            }
         }
 
-        if (subject === Symbol.INVALID) {
+        // If chooseSubject could find a valid entering symbol, one
+        // last option is available if the entire row is composed of
+        // dummy variables. If the constant of the row is zero, then
+        // this represents redundant constraints and the new dummy
+        // marker can enter the basis. If the constant is non-zero,
+        // then it represents an unsatisfiable constraint.
+        if (!subject) {
+            let allDumies = true;
+            for (let symbol in row.cells) {
+                if (symbol.charAt(0) !== Symbol.DUMMY) {
+                    allDumies = false;
+                    break;
+                }
+            }
+            if (allDumies) {
+                if (!nearZero(row.constant)) {
+                    throw new SolverError({name: 'UnsatisfiableConstraintError', message: 'The constraint can not be satisfied.', constraint: constraint});
+                }
+                subject = tag.marker;
+            }
+        }
+
+        // If an entering symbol still isn't found, then the row must
+        // be added using an artificial variable. If that fails, then
+        // the row represents an unsatisfiable constraint.
+        if (!subject) {
             if (!this._addWithArtificialVariable(row)) {
-                throw new Errors.UnsatisfiableConstraintError(constraint);
+                throw new SolverError({name: 'UnsatisfiableConstraintError', message: 'The constraint can not be satisfied.', constraint: constraint});
             }
         }
         else {
@@ -118,8 +218,10 @@ class Solver {
         }
         this._constraints[constraint.symbol] = tag;
 
+        //
+        // Optimize
+        //
         this._optimize(this._objective);
-
         return this;
     }
 
@@ -132,14 +234,19 @@ class Solver {
     removeConstraint(constraint) {
         const tag = this._constraints[constraint.symbol];
         if (!tag) {
-            throw new Errors.UnknownConstraintError(constraint);
+            throw new SolverError({name: 'UnknownConstraintError', message: 'The constraint has not been added to the solver.', constraint: constraint});
         }
         delete this._constraints[constraint.symbol];
 
         // Remove the error effects from the objective function
         // *before* pivoting, or substitutions into the objective
         // will lead to incorrect solver results.
-        this._removeConstraintEffects(constraint, tag); // TODO
+        if (tag.marker.charAt(0) === Symbol.ERROR) {
+            this._removeMarkerEffects(tag.marker, constraint.strength);
+        }
+        if (tag.other.charAt(0) === Symbol.ERROR) {
+            this._removeMarkerEffects(tag.other, constraint.strength);
+        }
 
         // If the marker is basic, simply drop the row. Otherwise,
         // pivot the marker into the basis and then drop the row.
@@ -149,8 +256,8 @@ class Solver {
         }
         else {
             const leaving = this._getMarkerLeavingRow(tag.marker);
-            if (leaving === Symbol.INVALID) {
-                throw new Errors.InternalSolverError('Failed to find leaving row');
+            if (!leaving) {
+                throw new SolverError({name: 'InternalSolverError', message: 'Failed to find leaving row'});
             }
             row = this._rows[leaving];
             delete this._rows[leaving];
@@ -185,10 +292,10 @@ class Solver {
     addEditVariable(variable, strength) {
         strength = strength || Strength.STRONG;
         if (this._edits[variable.symbol]) {
-            throw new Errors.DuplicateEditVariable(variable);
+            throw new SolverError({name: 'DuplicateEditVariableError', message: 'The edit variable has already been added to the solver.', variable: variable});
         }
         if (strength === Strength.REQUIRED) {
-            throw new Errors.BadRequiredStrengthError();
+            throw new SolverError({name: 'BadRequiredStrengthError', message: 'A required strength cannot be used in this context.'});
         }
         const editInfo = {
             constraint: this._createConstraint(new Expression(0, [new Term(variable)]), 0, strength),
@@ -209,7 +316,7 @@ class Solver {
     removeEditVariable(variable) {
         const editInfo = this._edits[variable.symbol];
         if (!editInfo) {
-            throw new Errors.UnknownEditVariableError(variable);
+            throw new SolverError({name: 'UnknownEditVariableError', message: 'The edit variable has not been added to the solver.', variable: variable});
         }
         this.removeConstraint(editInfo.constraint);
         delete this._edits[variable.symbol];
@@ -236,7 +343,7 @@ class Solver {
     suggestValue(variable, value) {
         const editInfo = this._edits[variable.symbol];
         if (!editInfo) {
-            throw new Errors.UnknownEditVariableError(variable);
+            throw new SolverError({name: 'UnknownEditVariableError', message: 'The edit variable has not been added to the solver.', variable: variable});
         }
 
         const delta = value - editInfo.constant;
@@ -304,34 +411,6 @@ class Solver {
         return type + this._nextId++;
     }
 
-    _chooseSubject(row, tag) {
-        for (let symbol in row.cells) {
-            if (symbol.charAt(0) === Symbol.EXTERNAL) {
-                return symbol;
-            }
-        }
-        if ((tag.marker.charAt(0) === Symbol.SLACK) || (tag.marker.charAt(0) === Symbol.ERROR)) {
-            if (row.coefficientFor(tag.marker) < 0){
-                return tag.marker;
-            }
-        }
-        if ((tag.other.charAt(0) === Symbol.SLACK) || (tag.other.charAt(0) === Symbol.ERROR)) {
-            if (row.coefficientFor(tag.other) < 0){
-                return tag.other;
-            }
-        }
-        return Symbol.INVALID;
-    }
-
-    _allDummies(row) {
-        for (let symbol in row.cells) {
-            if (symbol.charAt(0) !== Symbol.DUMMY) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     _createRow(constraint, tag) {
         const expr = constraint.expression;
         const row = new Row(expr.constant);
@@ -384,15 +463,6 @@ class Solver {
         return row;
     }
 
-    _removeConstraintEffects(constraint, tag) {
-        if (tag.marker.charAt(0) === Symbol.ERROR) {
-            this._removeMarkerEffects(tag.marker, constraint.strength);
-        }
-        if (tag.other.charAt(0) === Symbol.ERROR) {
-            this._removeMarkerEffects(tag.other, constraint.strength);
-        }
-    }
-
     _removeMarkerEffects(marker, strength) {
         const row = this._rows[marker];
         if (row) {
@@ -404,7 +474,7 @@ class Solver {
     }
 
     _getDualEnteringSymbol(row) {
-        let entering = Symbol.INVALID;
+        let entering;
         let ratio = Number.MAX_VALUE;
         for (let symbol in row.cells) {
             if ((symbol.charAt(0) !== Symbol.DUMMY) && (row.cells[symbol] > 0)) {
@@ -418,33 +488,6 @@ class Solver {
         return entering;
     }
 
-    _getEnteringSymbol(row) {
-        for (let symbol in row.cells) {
-            if ((symbol.charAt(0) !== Symbol.DUMMY) && (row.cells[symbol] < 0)) {
-                return symbol;
-            }
-        }
-        return Symbol.INVALID;
-    }
-
-    _getLeavingSymbol(entering) {
-        let ratio = Number.MAX_VALUE;
-        let found = Symbol.INVALID;
-        for (let symbol in this._rows) {
-            if (symbol.charAt(0) !== Symbol.EXTERNAL) {
-                const temp = this._rows[symbol].coefficientFor(entering);
-                if (temp < 0) {
-                    const tempRatio = -this._rows[symbol].constant / temp;
-                    if (tempRatio < ratio) {
-                        ratio = tempRatio;
-                        found = symbol;
-                    }
-                }
-            }
-        }
-        return found;
-    }
-
     _getMarkerLeavingRow(marker) {
         const dmax = Number.MAX_VALUE;
         let r1 = dmax;
@@ -452,7 +495,7 @@ class Solver {
         let first;
         let second;
         let third;
-        for (var symbol in this._rows) {
+        for (let symbol in this._rows) {
             const row = this._rows[symbol];
             const c = row.coefficientFor(marker);
             if (!c) {
@@ -476,18 +519,37 @@ class Solver {
                 }
             }
         }
-        return first || second || third || Symbol.INVALID;
+        return first || second || third;
     }
 
     _optimize(objectiveRow) {
         for (;;) {
-            const entering = this._getEnteringSymbol(objectiveRow);
-            if (entering === Symbol.INVALID) {
+            let entering;
+            for (let symbol in objectiveRow.cells) {
+                if ((symbol.charAt(0) !== Symbol.DUMMY) && (objectiveRow.cells[symbol] < 0)) {
+                    entering = symbol;
+                    break;
+                }
+            }
+            if (!entering) {
                 return;
             }
-            const leaving = this._getLeavingSymbol(entering);
-            if (leaving === Symbol.INVALID) {
-                throw new Errors.InternalSolverError('The objective is unbounded.');
+            let ratio = Number.MAX_VALUE;
+            let leaving;
+            for (let symbol in this._rows) {
+                if (symbol.charAt(0) !== Symbol.EXTERNAL) {
+                    const temp = this._rows[symbol].coefficientFor(entering);
+                    if (temp < 0) {
+                        const tempRatio = -this._rows[symbol].constant / temp;
+                        if (tempRatio < ratio) {
+                            ratio = tempRatio;
+                            leaving = symbol;
+                        }
+                    }
+                }
+            }
+            if (!leaving) {
+                throw new SolverError({name: 'InternalSolverError', message: 'The objective is unbounded.'});
             }
             // pivot the entering symbol into the basis
             const row = this._rows[leaving];
@@ -504,8 +566,8 @@ class Solver {
             const row = this._rows[leaving];
             if (row && (row.constant < 0)) {
                 const entering = this._getDualEnteringSymbol(row);
-                if (entering === Symbol.INVALID) {
-                    throw new Errors.InternalSolverError('Dual optimize failed.');
+                if (!entering) {
+                    throw new SolverError({name: 'InternalSolverError', message: 'Dual optimize failed.'});
                 }
                 // pivot the entering symbol into the basis
                 delete this._rows[leaving];
@@ -536,7 +598,6 @@ class Solver {
                 return symbol;
             }
         }
-        return Symbol.INVALID;
     }
 
     _addWithArtificialVariable(row) {
@@ -557,11 +618,11 @@ class Solver {
         const findRow = this._rows[art];
         if (findRow) {
             delete this._rows[art];
-            if (findRow.empty) { // TODO
+            if (findRow.empty) {
                 return success;
             }
             const entering = this._anyPivotableSymbol(findRow);
-            if (entering === Symbol.INVALID) {
+            if (!entering) {
                 return false;  // unsatisfiable (will this ever happen?)
             }
             findRow.solveFor(art, entering);
@@ -579,23 +640,23 @@ class Solver {
 }
 
 /**
- * Mooruk.
+ * @class SolverError
  *
- * A cassowary constraint solver built for speed and speed only...
- *
- * @namespace Mooruk
- * @property {Solver} Solver
- * @property {Expression} Expression
- * @property {Term} Term
- * @property {Errors} Errors
- * @property {Operator} Operator
- * @property {Strength} Strength
+ * Error object thrown by the Solver.
  */
+function SolverError(properties) {
+    for (var key in properties) {
+        this[key] = properties[key];
+    }
+}
+SolverError.prototype = Object.create(Error.prototype);
+SolverError.prototype.constructor = SolverError;
+
 var Mooruk = {
     Solver: Solver,
     Expression: Expression,
     Term: Term,
-    Errors: Errors,
+    SolverError: SolverError,
     Operator: Operator,
     Strength: Strength
 };

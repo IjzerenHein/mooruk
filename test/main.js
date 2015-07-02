@@ -4,6 +4,7 @@ var Mooruk = (typeof window === 'undefined') ? require('../src/Solver.es6').defa
 var Solver = Mooruk.Solver;
 var Expression = Mooruk.Expression;
 var Operator = Mooruk.Operator;
+var SolverError = Mooruk.SolverError;
 
 describe('Mooruk', function() {
     it('create Solver', function() {
@@ -31,6 +32,32 @@ describe('Mooruk', function() {
         it('removeEditVariable', function() {
             solver.removeEditVariable(variable);
             assert(!solver.hasEditVariable(variable));
+        });
+        it('Exception:DuplicateEditVariableError', function() {
+            assert(!solver.hasEditVariable(variable));
+            solver.addEditVariable(variable);
+            assert(solver.hasEditVariable(variable));
+            try {
+                solver.addEditVariable(variable);
+                assert(false);
+            }
+            catch (err) {
+                assert(err instanceof SolverError);
+                assert.equal(err.name, 'DuplicateEditVariableError');
+            }
+        });
+        it('Exception:UnknownEditVariableError', function() {
+            assert(solver.hasEditVariable(variable));
+            solver.removeEditVariable(variable);
+            assert(!solver.hasEditVariable(variable));
+            try {
+                solver.removeEditVariable(variable);
+                assert(false);
+            }
+            catch (err) {
+                assert(err instanceof SolverError);
+                assert.equal(err.name, 'UnknownEditVariableError');
+            }
         });
     });
 
