@@ -3,6 +3,10 @@
 
 A new lightweight javascript Cassowary constraint solver built for speed.
 
+Mooruk is a lightweight and fast cassowary constraint solver based on the [Kiwi C++ implementation](https://github.com/nucleic/kiwi).
+A mooruk is a small(er) species of Cassowary noted for its agility in running and leaping.
+Mooruk is about 3x faster and 4x smaller compared to [Cassowary.js](https://github.com/slightlyoff/cassowary.js/). It is built for speed and low memory consumption. It contains no syntactical sugar whatsoever and intends to be as lean and mean as possible.
+
 # Work in progress, check back later
 
 TODO
